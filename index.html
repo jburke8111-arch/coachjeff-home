@@ -120,6 +120,25 @@
   .coaching p{color:#c3cbdb;margin-top:8px;max-width:48ch}
   .coaching .btn-primary{background:var(--accent)}
 
+  /* Feedback */
+  .feedback{margin:20px 0 10px;padding:36px 40px;background:var(--card);border:1px solid var(--line);border-radius:20px}
+  .feedback h2{font-family:'Fraunces',serif;font-weight:600;font-size:1.5rem;letter-spacing:-.01em}
+  .feedback p{color:var(--ink-soft);margin-top:8px;max-width:56ch}
+  .feedback form{margin-top:22px;display:grid;gap:16px;max-width:560px}
+  .feedback label{font-weight:600;font-size:.92rem;color:var(--ink);display:block;margin-bottom:6px}
+  .feedback input,.feedback textarea{
+    width:100%;font-family:inherit;font-size:1rem;color:var(--ink);
+    padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;background:#fff;
+  }
+  .feedback input:focus,.feedback textarea:focus{outline:none;border-color:var(--brand)}
+  .feedback textarea{min-height:120px;resize:vertical}
+  .feedback .btn-primary{background:var(--brand);border:none;cursor:pointer;justify-self:start}
+  .feedback .hint{font-size:.85rem;color:var(--ink-soft);margin-top:2px}
+  .feedback-thanks{
+    display:none;margin-top:22px;padding:16px 18px;border-radius:10px;
+    background:#eaf4ec;border:1px solid #bfe0c6;color:#1f5c33;font-weight:500;
+  }
+
   /* Footer */
   footer{padding:40px 0 56px;color:var(--ink-soft);font-size:.9rem;border-top:1px solid var(--line);margin-top:30px}
   footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px}
@@ -222,6 +241,31 @@
         <p>The tools are free and always will be. If you'd like hands-on help, I run a free four-session coaching program covering resumes, personal branding, networking, and interviews.</p>
       </div>
       <a class="btn btn-primary" href="https://cal.com/careercoachjeff/30min" target="_blank" rel="noopener">Book a free chat</a>
+    </div>
+
+    <div class="feedback">
+      <h2>Got feedback?</h2>
+      <p>These tools are a work in progress and I read every note. Tell me what worked, what didn't, or what you wish existed — it genuinely shapes what I build next.</p>
+
+      <form name="feedback" method="POST" data-netlify="true" netlify-honeypot="bot-field" onsubmit="setTimeout(function(){document.getElementById('feedback-thanks').style.display='block';document.querySelector('.feedback form').reset();},100)">
+        <input type="hidden" name="form-name" value="feedback" />
+        <p style="display:none"><label>Don't fill this out: <input name="bot-field" /></label></p>
+
+        <div>
+          <label for="fb-message">Your feedback</label>
+          <textarea id="fb-message" name="message" required placeholder="What's on your mind?"></textarea>
+        </div>
+
+        <div>
+          <label for="fb-email">Email <span style="font-weight:400;color:var(--ink-soft)">(optional)</span></label>
+          <input type="email" id="fb-email" name="email" placeholder="you@example.com" />
+          <div class="hint">Only if you'd like a reply — otherwise leave it blank.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Send feedback</button>
+      </form>
+
+      <div class="feedback-thanks" id="feedback-thanks">Thanks — your feedback came through. I appreciate it.</div>
     </div>
 
   </div>
