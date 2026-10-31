@@ -1,20 +1,42 @@
+import {rounds, categories, emphasis, suggested, plan} from './focus.mjs';
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  const questions = [
-    'Tell me about yourself and what interests you in this opportunity.',
-    'Tell me about a class project, internship, or job where you solved a difficult problem. What did you personally do?',
-    'Describe a time you worked with someone whose approach differed from yours. How did you handle it?',
-    'Tell me about a time you had to learn something quickly. How did you know you had learned it well enough?',
-    'What questions would you ask the interviewer about this role or team?'
-  ];
   let messages = [], details = {}, demo = false, busy = false, report = '', stage = 'setup';
   const answered = () => messages.filter(m => m.role === 'user').length;
-  const total = () => demo ? 5 : details.length;
+  const total = () => details.length;
+  let samplePlan = [];
+  function sampleQuestion(index) {
+    const c = samplePlan[index];
+    const prior = samplePlan.slice(0,index).filter(x=>x.id===c.id).length;
+    const followups = ['What specific detail could you add to make your last answer clearer?', 'Which part of that answer best shows what you would bring to this role?', 'What assumption in your answer would you want to check with the interviewer?', 'How would you explain your main point in two or three sentences?', 'What might an interviewer ask you to clarify about that answer?', 'What additional example or explanation could support your answer?', 'What would you change about your answer after reflecting on it?'];
+    return prior ? followups[(prior-1)%followups.length] : c.question;
+  }
+  function renderFocus(useSuggested = false) {
+    const ids = useSuggested ? suggested($('round').value) : [...document.querySelectorAll('[name=focus]:checked')].map(el => el.value);
+    $('focus-options').replaceChildren();
+    for (const c of categories) {
+      const label = document.createElement('label'); label.className = 'focus-option';
+      const input = document.createElement('input'); input.type = 'checkbox'; input.name = 'focus'; input.value = c.id; input.checked = ids.includes(c.id); input.addEventListener('change', focusSummary);
+      const name = document.createElement('span'); name.textContent = c.label;
+      const weight = document.createElement('span'); weight.className = 'focus-weight'; const n = emphasis(c, $('round').value); weight.textContent = n ? '●'.repeat(n) : '—'; weight.setAttribute('aria-label', ['Outside usual mix','Light emphasis','Moderate emphasis','Heavy emphasis'][n]);
+      label.append(input,name,weight); $('focus-options').append(label);
+    }
+    focusSummary();
+  }
+  function focusSummary() {
+    const ids = [...document.querySelectorAll('[name=focus]:checked')].map(el => el.value);
+    const n = Number($('length').value); const topics = plan($('round').value,ids,n);
+    $('focus-summary').textContent = !ids.length ? 'Select at least one category.' : `${ids.length} categories selected · ${n} questions. ${ids.length > n ? 'This session will prioritize the strongest suggested topics; use fewer categories to target a particular topic. ' : ''}Planned topics: ${[...new Set(topics.map(c=>c.label))].join(', ')}.`;
+  }
+  function readDetails() {
+    return {role:$('role').value.trim(), job:$('job').value.trim(), resume:$('resume').value.trim(), kind:'General screening', round:$('round').value, focusIds:[...document.querySelectorAll('[name=focus]:checked')].map(el=>el.value), length:Number($('length').value)};
+  }
+  $('round').addEventListener('change',()=>renderFocus(true)); $('length').addEventListener('change',focusSummary); $('reset-focus').addEventListener('click',()=>renderFocus(true)); renderFocus(true);
   function error(message = '') { $('error').textContent = message; $('error').classList.toggle('hidden', !message); }
   function working(value) {
     busy = value;
-    document.querySelectorAll('button, #setup-form input, #setup-form textarea, #setup-form select, #answer').forEach(el => { el.disabled = value; });
+    document.querySelectorAll('button, #setup-form input, #setup-form textarea, #setup-form select, [name=focus], #answer').forEach(el => { el.disabled = value; });
     $('status').textContent = value ? 'Preparing your next step…' : '';
     $('start').textContent = value ? 'Connecting…' : 'Start AI interview →';
   }
@@ -64,28 +86,29 @@
   }
   $('setup-form').addEventListener('submit', async e => {
     e.preventDefault(); if (busy) return; error();
-    details = {role:$('role').value.trim(), job:$('job').value.trim(), resume:$('resume').value.trim(), kind:$('kind').value, length:Number($('length').value)};
+    details = readDetails();
+    if (!details.focusIds.length) return error('Select at least one question category.');
     if (!details.role || !details.job) return error('Enter a job title and job description.');
     working(true);
     try { const text = await ask([], false); demo = false; report = ''; messages = [{role:'assistant', content:text}]; renderTranscript(); show('interview'); }
     catch (e) { error(e.name === 'AbortError' ? 'The connection timed out. Please try again.' : e.message); }
     finally { working(false); }
   });
-  $('sample').addEventListener('click', () => { if (busy) return; demo = true; report = ''; messages = [{role:'assistant', content:questions[0]}]; $('answer').value = ''; error(); renderTranscript(); show('interview'); });
+  $('sample').addEventListener('click', () => { if (busy) return; details = readDetails(); if (!details.focusIds.length) return error('Select at least one question category.'); demo = true; report = ''; samplePlan = plan(details.round, details.focusIds, details.length); messages = [{role:'assistant', content:sampleQuestion(0)}]; $('answer').value = ''; error(); renderTranscript(); show('interview'); });
   $('answer-form').addEventListener('submit', async e => {
     e.preventDefault(); const answer = $('answer').value.trim(); if (busy || !answer || answered() >= total()) return;
     error(); working(true);
     const history = [...messages, {role:'user', content:answer}];
     const finish = answered() + 1 >= total();
     try {
-      if (demo) { messages = history; if (!finish) messages.push({role:'assistant', content:questions[answered()]}); }
+      if (demo) { messages = history; if (!finish) messages.push({role:'assistant', content:sampleQuestion(answered())}); }
       else { const text = await ask(history, finish); messages = history; if (finish) report = text; else messages.push({role:'assistant', content:text}); }
       $('answer').value = ''; renderTranscript(); if (finish) review();
     } catch (e) { error((e.name === 'AbortError' ? 'The connection timed out.' : e.message) + ' Your answer has been kept so you can try again.'); }
     finally { working(false); }
   });
   function download() {
-    const text = ['CareerLaunch Interview Practice', demo ? 'SAMPLE SESSION — preset questions; no AI assessment' : `Role: ${details.role}\nFocus: ${details.kind}`, ...messages.map(m => `${m.role === 'assistant' ? 'Interviewer' : 'Candidate'}: ${m.content}`), report || 'Self-review: Check each answer for a clear example, your own actions, and an outcome.'].join('\n\n');
+    const text = ['CareerLaunch Interview Practice', demo ? `SAMPLE SESSION — preset questions; no AI assessment\nRound: ${rounds.find(r=>r.id===details.round)?.label}\nSelected categories: ${details.focusIds.map(id=>categories.find(c=>c.id===id).label).join(', ')}` : `Role: ${details.role}\nRound: ${rounds.find(r=>r.id===details.round)?.label || details.kind}\nSelected categories: ${categories.filter(c=>details.focusIds.includes(c.id)).map(c=>c.label).join(", ")}`, ...messages.map(m => `${m.role === 'assistant' ? 'Interviewer' : 'Candidate'}: ${m.content}`), report || 'Self-review: Check each answer for a clear example, your own actions, and an outcome.'].join('\n\n');
     const url = URL.createObjectURL(new Blob([text], {type:'text/plain;charset=utf-8'}));
     const a = document.createElement('a'); a.href = url; a.download = 'coach-jeff-interview-practice.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
