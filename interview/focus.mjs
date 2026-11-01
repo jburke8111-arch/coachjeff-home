@@ -7,7 +7,7 @@ export const rounds = [
 export const categories = [
   {id:'motivation',label:'Motivation / fit',weights:[1,3,2,0,2,3],question:'What interests you in this role, and how does it connect with what you want to do next?'},
   {id:'resume',label:'Resume walk-through',weights:[0,3,2,0,1,1],question:'Walk me through the experience on your resume that best prepares you for this role.'},
-  {id:'behavioral',label:'Behavioral (STAR)',weights:[2,1,3,1,3,2],question:'Tell me about a time you solved a difficult problem. What was the situation, what did you do, and what happened?'},
+  {id:'behavioral',label:'Behavioral (STAR+)',weights:[2,1,3,1,3,2],question:'Tell me about a time you solved a difficult problem. What was the situation, what did you do, and what happened?'},
   {id:'situational',label:'Situational',weights:[3,1,2,2,2,1],question:'Suppose two teammates give you conflicting priorities for a project due tomorrow. How would you handle it?'},
   {id:'technical',label:'Technical / skills',weights:[2,0,2,3,2,0],question:'Choose a skill relevant to your target role. How have you used it, and how would you check the quality of your work?'},
   {id:'case',label:'Case / problem-solving',weights:[1,0,1,3,2,1],question:'A team is missing its project deadlines. How would you investigate the causes and decide what to improve first?'},
