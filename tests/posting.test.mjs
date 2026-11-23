@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import posting, {extractPosting, htmlToText, isPrivateAddress} from '../netlify/functions/posting.mjs';
+import posting, {extractPosting, htmlToText, isPrivateAddress, atsFeed} from '../netlify/functions/posting.mjs';
 import {tidy} from '../interview/importers.mjs';
 
 const req = (url, origin = 'https://coachjeff.netlify.app') => new Request('https://coachjeff.netlify.app/.netlify/functions/posting', {method:'POST', headers:{origin, 'Content-Type':'application/json'}, body:JSON.stringify({url})});
@@ -49,3 +49,16 @@ test('reads a public posting, follows a safe redirect, and gives LinkedIn-specif
   } finally { globalThis.fetch = oldFetch; }
 });
 test('uploaded text is tidied', () => { assert.equal(tidy('a  b\r\n\n\n\nc '), 'a b\n\nc'); });
+
+test('hiring-system links map to their public data feeds', () => {
+  assert.equal(String(atsFeed(new URL('https://job-boards.greenhouse.io/greenhouse/jobs/8279752?gh_jid=8279752')).url), 'https://boards-api.greenhouse.io/v1/boards/greenhouse/jobs/8279752');
+  assert.equal(String(atsFeed(new URL('https://boards.greenhouse.io/embed/job_app?for=acme&token=123')).url), 'https://boards-api.greenhouse.io/v1/boards/acme/jobs/123');
+  assert.equal(String(atsFeed(new URL('https://jobs.lever.co/acme/abc-123')).url), 'https://api.lever.co/v0/postings/acme/abc-123');
+  assert.equal(String(atsFeed(new URL('https://acme.wd5.myworkdayjobs.com/en-US/External/job/Dallas-TX/Analyst_R123')).url), 'https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/External/job/Dallas-TX/Analyst_R123');
+  assert.equal(atsFeed(new URL('https://example.com/jobs/1')), null);
+  const gh = atsFeed(new URL('https://job-boards.greenhouse.io/acme/jobs/1')).parse({title:'Analyst', company_name:'Acme', content:'&lt;p&gt;Build reports &amp;amp; models.&lt;/p&gt;', location:{name:'Remote'}});
+  assert.equal(gh.title, 'Analyst'); assert.match(gh.text, /Build reports & models\./); assert.match(gh.text, /Remote/);
+});
+test('page text ignores > inside attributes', () => {
+  assert.equal(htmlToText('<input x-on:keydown="a >= 0 ? b : c"><p>Real text</p>'), 'Real text');
+});

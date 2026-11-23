@@ -26,8 +26,8 @@ export default async function posting(request) {
     ? `${site[1]} doesn’t let other websites read its job postings. Open the posting, select the description, copy it, and paste it into the Job posting box.`
     : 'We couldn’t read that page automatically. Open the posting, select the description, copy it, and paste it into the Job posting box.';
   try {
-    const html = await fetchPublic(link);
-    const result = extractPosting(html);
+    const feed = atsFeed(link);
+    const result = feed ? feed.parse(JSON.parse(await fetchPublic(feed.url, 'application/json'))) : extractPosting(await fetchPublic(link));
     if (!result || result.text.length < 300) return reply({error:pasteHint}, 422);
     return reply(result);
   } catch (e) {
@@ -56,19 +56,44 @@ async function checkHost(url) {
   if (!addresses.length || addresses.some(a => isPrivateAddress(a.address))) throw refuse('That link isn’t a public web page.');
 }
 
-async function fetchPublic(start) {
+async function fetchPublic(start, accept = 'text/html,application/xhtml+xml') {
   let url = start;
   for (let hop = 0; hop < 4; hop++) {
     await checkHost(url);
-    const response = await fetch(url, {redirect:'manual', signal:AbortSignal.timeout(8000), headers:{'User-Agent':'Mozilla/5.0 (compatible; CoachJeffInterviewPractice/1.0; job posting reader)', 'Accept':'text/html,application/xhtml+xml'}});
+    const response = await fetch(url, {redirect:'manual', signal:AbortSignal.timeout(8000), headers:{'User-Agent':'Mozilla/5.0 (compatible; CoachJeffInterviewPractice/1.0; job posting reader)', 'Accept':accept}});
     if (response.status >= 300 && response.status < 400 && response.headers.get('location')) { url = new URL(response.headers.get('location'), url); continue; }
     if (!response.ok) throw new Error(`status ${response.status}`);
-    if (!/html|xml/i.test(response.headers.get('content-type') || '')) throw new Error('not html');
+    if (!/html|xml|json/i.test(response.headers.get('content-type') || '')) throw new Error('unexpected content');
     const reader = response.body.getReader(); const chunks = []; let size = 0;
     for (;;) { const {done, value} = await reader.read(); if (done) break; size += value.length; if (size > MAX_BYTES) { reader.cancel(); break; } chunks.push(value); }
     return new TextDecoder().decode(Buffer.concat(chunks));
   }
   throw new Error('too many redirects');
+}
+
+// Hiring systems that publish postings as public data feeds. Reading the feed is more reliable than the web page.
+export function atsFeed(link) {
+  const host = link.hostname.toLowerCase(); const parts = link.pathname.split('/').filter(Boolean);
+  const clean = (title, company, html, extra = '') => ({title: decode(String(title || '')).trim(), company: decode(String(company || '')).trim(),
+    text: [title, company, extra, htmlToText(decode(String(html || '')))].filter(Boolean).map(String).join('\n\n').slice(0, MAX_TEXT), source: 'feed'});
+  // Greenhouse: job-boards.greenhouse.io/{board}/jobs/{id} or boards.greenhouse.io/embed/job_app?for={board}&token={id}
+  if (/(^|\.)greenhouse\.io$/.test(host)) {
+    let board = parts[0], id = parts[1] === 'jobs' ? parts[2] : null;
+    if (parts[0] === 'embed') { board = link.searchParams.get('for'); id = link.searchParams.get('token'); }
+    if (board && /^\d+$/.test(id || '')) return {url: new URL(`https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs/${id}`),
+      parse: j => clean(j.title, j.company_name || board, j.content, j.location?.name)};
+  }
+  // Lever: jobs.lever.co/{company}/{id}
+  if (host === 'jobs.lever.co' && parts.length >= 2) return {url: new URL(`https://api.lever.co/v0/postings/${encodeURIComponent(parts[0])}/${encodeURIComponent(parts[1])}`),
+    parse: j => clean(j.text, parts[0], [j.description, ...(j.lists || []).map(l => `<h3>${l.text}</h3><ul>${l.content}</ul>`), j.additional].join('\n'), j.categories?.location)};
+  // Workday: {tenant}.wd{n}.myworkdayjobs.com/[locale/]{site}/job/{...}
+  if (/\.myworkdayjobs\.com$/.test(host)) {
+    const i = parts.indexOf('job');
+    if (i >= 1) { const tenant = host.split('.')[0]; const site = parts[i - 1];
+      return {url: new URL(`https://${host}/wday/cxs/${tenant}/${site}/${parts.slice(i).map(encodeURIComponent).join('/')}`),
+        parse: j => clean(j.jobPostingInfo?.title, j.hiringOrganization?.name, j.jobPostingInfo?.jobDescription, j.jobPostingInfo?.location)}; }
+  }
+  return null;
 }
 
 const ENTITIES = {amp:'&', lt:'<', gt:'>', quot:'"', apos:"'", nbsp:' ', rsquo:'’', lsquo:'‘', rdquo:'”', ldquo:'“', ndash:'–', mdash:'—', bull:'•', hellip:'…'};
@@ -78,9 +103,9 @@ function decode(s) {
 export function htmlToText(html) {
   return decode(String(html)
     .replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<li\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, '\n• ')
     .replace(/<(br|\/p|\/div|\/h[1-6]|\/li|\/ul|\/ol|\/tr|\/section|\/article)[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' '))
+    .replace(/<(?:[^>"']|"[^"]*"|'[^']*')*>/g, ' '))
     .replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 function findJobPosting(node) {
