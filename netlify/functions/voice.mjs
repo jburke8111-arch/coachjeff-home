@@ -17,7 +17,8 @@ export default async function voice(request) {
   if (request.method !== 'POST') return reply({error:'Method not allowed'}, 405, {Allow:'POST'});
   const url = new URL(request.url);
   if (request.headers.get('origin') !== url.origin) return reply({error:'Open the interview page on this website to practice.'}, 403);
-  if (process.env.INTERVIEW_ENABLED !== 'true' || process.env.VOICE_ENABLED === 'false' || !process.env.OPENAI_API_KEY) return reply({error:'Voice practice is not available right now. You can still type your answers.'}, 503);
+  const off = process.env.INTERVIEW_ENABLED !== 'true' ? 'interview-disabled' : process.env.VOICE_ENABLED === 'false' ? 'voice-disabled' : !process.env.OPENAI_API_KEY ? 'no-key' : '';
+  if (off) return reply({error:'Voice practice is not available right now. You can still type your answers.', code:off}, 503);
   const action = url.searchParams.get('action');
   const type = (request.headers.get('content-type') || '').toLowerCase();
   const declared = Number(request.headers.get('content-length') || 0);
@@ -49,7 +50,7 @@ async function speak(request, type, declared) {
     }),
     signal: AbortSignal.timeout(20000)
   });
-  if (!response.ok) return providerError(response.status);
+  if (!response.ok) return providerError(response);
   const audio = await response.arrayBuffer();
   return new Response(audio, {status:200, headers:{'Content-Type':'audio/mpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 }
@@ -72,15 +73,18 @@ async function transcribe(request, type, declared) {
     method:'POST', headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`}, body:form,
     signal: AbortSignal.timeout(25000)
   });
-  if (!response.ok) return providerError(response.status);
+  if (!response.ok) return providerError(response);
   const result = await response.json();
   const text = typeof result.text === 'string' ? result.text.trim() : '';
   if (!text) return reply({error:'No speech was recognized. Please try again or type your answer.'}, 422);
   return reply({text});
 }
 
-function providerError(status) {
+async function providerError(response) {
+  const status = response.status; let code = '';
+  try { const e = (await response.json()).error || {}; code = String(e.code || e.type || '').slice(0, 60); console.error('OpenAI voice error', status, code, String(e.message || '').slice(0, 200)); } catch {}
+  const tag = `openai-${status}${code ? '-' + code : ''}`;
   return status === 429
-    ? reply({error:'The voice service is at its usage limit. Please try again later, or type your answer.'}, 429)
-    : reply({error:'The voice service is unavailable. Please try again later, or type your answer.'}, 502);
+    ? reply({error:'The voice service is at its usage limit. Please try again later, or type your answer.', code:tag}, 429)
+    : reply({error:'The voice service is unavailable. Please try again later, or type your answer.', code:tag}, 502);
 }

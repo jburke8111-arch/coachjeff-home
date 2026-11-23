@@ -96,7 +96,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
       if (response.status === 429) throw new Error('The practice limit has been reached. Please wait a few minutes and try again.');
       let result;
       try { result = await response.json(); } catch { throw new Error('The interview service is unavailable. Please try again later.'); }
-      if (!response.ok) throw new Error(result.error || 'Unable to connect. Please try again.');
+      if (!response.ok) throw new Error((result.error || 'Unable to connect. Please try again.') + (result.code ? ` (code: ${result.code})` : ''));
       if (typeof result.text !== 'string' || !result.text.trim()) throw new Error('No response was returned. Please try again.');
       return result.text;
     } finally { clearTimeout(timer); }
@@ -175,7 +175,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
       if (!url) {
         $('voice-status').textContent = 'Loading audio…';
         const response = await fetch('/.netlify/functions/voice?action=speak', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})});
-        if (!response.ok) { let msg = 'Audio is unavailable right now.'; try { msg = (await response.json()).error || msg; } catch {} throw new Error(msg); }
+        if (!response.ok) { let msg = 'Audio is unavailable right now.'; try { const j = await response.json(); msg = (j.error || msg) + (j.code ? ` (code: ${j.code})` : ''); } catch {} throw new Error(msg); }
         url = URL.createObjectURL(await response.blob()); audioCache.set(text, url);
       }
       player.pause(); player.src = url; player.currentTime = 0;
@@ -223,7 +223,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     try {
       const response = await fetch('/.netlify/functions/voice?action=transcribe', {method:'POST', headers:{'Content-Type':blob.type}, body:blob});
       let result; try { result = await response.json(); } catch { throw new Error('The voice service is unavailable. Please type your answer.'); }
-      if (!response.ok || typeof result.text !== 'string') throw new Error(result.error || 'Transcription failed. Please try again or type your answer.');
+      if (!response.ok || typeof result.text !== 'string') throw new Error((result.error || 'Transcription failed. Please try again or type your answer.') + (result.code ? ` (code: ${result.code})` : ''));
       takes.push({text:result.text, seconds});
       const box = $('answer'); box.value = (box.value.trim() ? box.value.trim() + ' ' : '') + result.text; box.focus();
       $('voice-status').textContent = 'Check the text, fix any mistakes, then send your answer.';

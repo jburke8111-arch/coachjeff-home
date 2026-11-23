@@ -50,11 +50,17 @@ export default async function interview(request) {
       body:JSON.stringify({model:process.env.OPENAI_MODEL || 'gpt-4.1-mini', instructions, input:[{role:'user',content:JSON.stringify({role,job,resume,...(avoid.length ? {previouslyAsked:avoid} : {}),...(previous ? {previousAttempt:{feedback:previous.feedback,answers:previous.answers}} : {})})}, ...messages], store:false, max_output_tokens:finish ? 2200 : 220}),
       signal:AbortSignal.timeout(25000)
     });
-    if (!response.ok) return reply({error:response.status === 429 ? 'The AI service is at its usage limit. Please try again later.' : 'The AI service is unavailable. Please try again later.'}, response.status === 429 ? 429 : 502);
+    if (!response.ok) { const detail = await providerDetail(response); console.error('OpenAI interview error', response.status, detail); return reply({error:response.status === 429 ? 'The AI service is at its usage limit. Please try again later.' : 'The AI service is unavailable. Please try again later.', code:`openai-${response.status}${detail.code ? '-' + detail.code : ''}`}, response.status === 429 ? 429 : 502); }
     const result = await response.json();
     if (result.status === 'incomplete') return reply({error:'The AI response was incomplete. Please try again.'},502);
     const text = (result.output || []).flatMap(o => o.content || []).filter(c => c.type === 'output_text').map(c => c.text || '').join('\n').trim();
     if (!text) return reply({error:'No response was returned. Please try again.'},502);
     return reply({text});
   } catch { return reply({error:'The AI connection timed out or was interrupted. Please try again.'},504); }
+}
+
+// Safe error details for logs and support: OpenAI's error type/code, never the key or request content.
+async function providerDetail(response) {
+  try { const e = (await response.json()).error || {}; return {code: String(e.code || e.type || '').slice(0, 60), message: String(e.message || '').slice(0, 200)}; }
+  catch { return {code: '', message: ''}; }
 }
