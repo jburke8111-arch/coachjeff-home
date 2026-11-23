@@ -59,15 +59,18 @@ import {analyze, notes, formatTime} from './delivery.mjs';
   function renderTranscript() {
     $('mode').textContent = (demo ? 'SAMPLE MODE' : 'AI INTERVIEW') + (previous?.mode === 'redo' ? ' · REDO' : previous?.mode === 'focus' ? ' · WEAK SPOTS' : '');
     $('interview-title').textContent = demo ? 'Practice your next conversation.' : details.role;
-    $('count').textContent = `${answered()} of ${total()} answers completed${demo ? ' · Preset questions; no adaptive feedback' : ''}`;
+    $('count').textContent = `${answered() < total() ? `Question ${answered() + 1} of ${total()}` : 'All questions answered'}${demo ? ' · Sample questions' : ''}`;
     $('progress').style.width = `${answered() / total() * 100}%`;
     $('conversation').replaceChildren();
     for (const m of messages) {
       const div = document.createElement('div'); div.className = `message ${m.role}`;
-      const label = document.createElement('span'); label.textContent = m.role === 'assistant' ? 'INTERVIEWER' : 'YOU';
+      const qn = messages.slice(0, messages.indexOf(m) + 1).filter(x => x.role === 'assistant').length;
+      const isCurrent = m === messages[messages.length - 1] && m.role === 'assistant' && answered() < total();
+      if (isCurrent) div.classList.add('current');
+      const label = document.createElement('span'); label.textContent = m.role === 'assistant' ? `QUESTION ${qn}` : 'YOUR ANSWER';
       const p = document.createElement('p'); p.textContent = m.content;
-      div.append(label, p);
-      if (m.role === 'assistant') { const play = document.createElement('button'); play.type = 'button'; play.className = 'play'; play.textContent = '▶ Play'; play.setAttribute('aria-label', 'Play this question aloud'); play.addEventListener('click', () => speak(m.content)); div.append(play); }
+      const head = document.createElement('div'); head.className = 'msg-head'; head.append(label); div.append(head, p);
+      if (m.role === 'assistant') { const play = document.createElement('button'); play.type = 'button'; play.className = 'play'; play.textContent = '▶ Listen'; play.setAttribute('aria-label', 'Play this question aloud'); play.addEventListener('click', () => speak(m.content)); head.append(play); }
       $('conversation').append(div);
     }
     $('answer-form').classList.toggle('hidden', answered() >= total());
@@ -196,7 +199,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     if (!canRecord) { btn.classList.add('hidden'); $('voice-status').textContent = $('voice-status').textContent || 'Voice answers are not supported in this browser. Please type your answer.'; return; }
     btn.disabled = busy || transcribing;
     btn.classList.toggle('recording', !!recorder);
-    btn.textContent = recorder ? `■ Stop recording (${formatTime((Date.now() - recordStart) / 1000)})` : (transcribing ? 'Transcribing…' : ($('answer').value.trim() ? '🎤 Record more' : '🎤 Answer out loud'));
+    btn.textContent = recorder ? `■ Stop recording (${formatTime((Date.now() - recordStart) / 1000)})` : (transcribing ? 'Transcribing…' : ($('answer').value.trim() ? '🎤 Add more out loud' : '🎤 Answer out loud'));
     $('send').disabled = busy || transcribing || !!recorder;
   }
   async function startRecording() {
