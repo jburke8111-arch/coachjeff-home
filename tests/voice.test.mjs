@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import voice, {config} from '../netlify/functions/voice.mjs';
-import {analyze, fillerCounts, countWords, notes, formatTime} from '../interview/delivery.mjs';
+import {analyze, fillerCounts, countWords, notes, formatTime, lengthZone, estimateSeconds} from '../interview/delivery.mjs';
 
 const base = 'https://coachjeff.netlify.app/.netlify/functions/voice';
 const speakReq = (body, origin = 'https://coachjeff.netlify.app') => new Request(`${base}?action=speak`, {method:'POST', headers:{origin, 'Content-Type':'application/json'}, body:JSON.stringify(body)});
@@ -52,7 +52,10 @@ test('delivery stats', () => {
   assert.deepEqual(fillerCounts('I like data and I would like this job. Do you know how to code?'), {});
   const s = analyze([{text:'one two three four five six seven eight nine ten', seconds:6}, {text:'um eleven', seconds:4}]);
   assert.equal(s.words, 12); assert.equal(s.seconds, 10); assert.equal(s.wpm, 72); assert.equal(s.fillerTotal, 1);
-  assert.ok(notes(s).some(n => /Short answer/.test(n)));
-  assert.ok(notes({seconds:200, words:500, wpm:150, fillerTotal:0}).some(n => /Long answer/.test(n)));
+  assert.ok(notes(s).some(n => /A bit short/.test(n)));
+  assert.ok(notes({seconds:200, words:500, wpm:150, fillerTotal:0}).some(n => /under 2 minutes/.test(n)));
+  assert.deepEqual([59, 60, 90, 91, 120, 121].map(lengthZone), ['short', 'good', 'good', 'long', 'long', 'over']);
+  assert.equal(estimateSeconds('word '.repeat(140)), 60);
+  assert.deepEqual(notes({typed:true, seconds:75, words:175}), []);
   assert.equal(formatTime(75), '1:15');
 });

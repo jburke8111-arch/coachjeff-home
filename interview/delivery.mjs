@@ -36,11 +36,20 @@ export function analyze(takes) {
   return {seconds: Math.round(seconds), words, wpm, fillers, fillerTotal};
 }
 
-// Coaching rules of thumb for practice, not research findings.
+// Coach Jeff's guide: most answers should run 60–90 seconds and stay under 2 minutes.
+export const TARGET = {min: 60, max: 90, limit: 120};
+// Typed answers: estimate speaking time at a typical conversational pace of about 140 words per minute (rule of thumb).
+export function estimateSeconds(text) { return Math.round(countWords(text) / 140 * 60); }
+export function lengthZone(seconds) {
+  return seconds < TARGET.min ? 'short' : seconds <= TARGET.max ? 'good' : seconds <= TARGET.limit ? 'long' : 'over';
+}
 export function notes(stats) {
   const tips = [];
-  if (stats.seconds < 30) tips.push('Short answer: add a specific example or result.');
-  else if (stats.seconds > 150) tips.push('Long answer: aim for about 1–2 minutes.');
+  const zone = lengthZone(stats.seconds);
+  if (zone === 'short') tips.push('A bit short: aim for 60–90 seconds by adding a specific example or result.');
+  else if (zone === 'long') tips.push('A little long: aim for 60–90 seconds.');
+  else if (zone === 'over') tips.push('Too long: keep answers under 2 minutes.');
+  if (stats.typed) return tips;
   if (stats.wpm !== null && stats.wpm > 175) tips.push('Fast pace: slow down and pause between points.');
   else if (stats.wpm !== null && stats.wpm < 100) tips.push('Slow pace: try a little more energy.');
   if (stats.words && stats.fillerTotal / stats.words > 0.04) tips.push('Many filler words: try a short pause instead.');

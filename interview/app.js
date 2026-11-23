@@ -1,5 +1,6 @@
 import {rounds, categories, emphasis, suggested, plan} from './focus.mjs';
-import {analyze, notes, formatTime} from './delivery.mjs';
+import {analyze, notes, formatTime, countWords, estimateSeconds, lengthZone} from './delivery.mjs';
+import {readFileText} from './importers.mjs';
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
@@ -148,7 +149,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
       if (demo) { messages = history; if (!finish) messages.push({role:'assistant', content:sampleQuestion(answered())}); }
       else if (redoQuestions && !finish) { messages = history; messages.push({role:'assistant', content:redoQuestions[answered()]}); }
       else { const text = await ask(history, finish); messages = history; if (finish) report = text; else messages.push({role:'assistant', content:text}); }
-      delivery[answered() - 1] = takes.length ? analyze(takes) : null; takes = [];
+      delivery[answered() - 1] = takes.length ? analyze(takes) : {typed:true, words:countWords(answer), seconds:estimateSeconds(answer)}; takes = [];
       $('answer').value = ''; renderTranscript(); if (finish) review(); else speakLatest();
     } catch (e) { error((e.name === 'AbortError' ? 'The connection timed out.' : e.message) + ' Your answer has been kept so you can try again.'); }
     finally { working(false); }
@@ -201,6 +202,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     btn.classList.toggle('recording', !!recorder);
     btn.textContent = recorder ? `■ Stop recording (${formatTime((Date.now() - recordStart) / 1000)})` : (transcribing ? 'Transcribing…' : ($('answer').value.trim() ? '🎤 Add more out loud' : '🎤 Answer out loud'));
     $('send').disabled = busy || transcribing || !!recorder;
+    renderTimer();
   }
   async function startRecording() {
     error(); stopAudio();
@@ -236,6 +238,18 @@ import {analyze, notes, formatTime} from './delivery.mjs';
   $('record').addEventListener('click', () => { if (recorder) recorder.stop(); else if (!busy && !transcribing) startRecording(); });
   $('answer').addEventListener('input', voiceButtons);
   $('read-aloud').addEventListener('change', () => { if (!$('read-aloud').checked) stopAudio(); });
+  // ---------- Answer timer: Coach Jeff's target is 60–90 seconds, under 2 minutes ----------
+  function renderTimer() {
+    const el = $('timer'); if (!el) return;
+    const spoken = takes.reduce((sum, t) => sum + t.seconds, 0) + (recorder ? (Date.now() - recordStart) / 1000 : 0);
+    const typed = $('answer').value.trim();
+    if (!spoken && !typed) { el.className = 'timer'; el.textContent = 'Aim for 1:00–1:30 · under 2:00'; return; }
+    const seconds = spoken || estimateSeconds(typed);
+    const zone = lengthZone(seconds);
+    const msg = {short: recorder ? 'Keep going' : 'A bit short', good: 'Right on target', long: 'Start wrapping up', over: 'Over 2 minutes: finish your point'}[zone];
+    el.className = `timer ${zone}`;
+    el.textContent = `${spoken ? (recorder ? '● ' : '') + formatTime(spoken) + ' spoken' : 'About ' + formatTime(seconds) + ' if spoken'} · ${msg}`;
+  }
   // ---------- Delivery stats on the review page ----------
   function deliveryRows() {
     return delivery.map((d, i) => d && {n:i + 1, ...d, tips:notes(d)}).filter(Boolean);
@@ -245,6 +259,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     box.classList.toggle('hidden', !rows.length); $('delivery-list').replaceChildren();
     for (const r of rows) {
       const li = document.createElement('li');
+      if (r.typed) { const head = document.createElement('strong'); head.textContent = `Q${r.n}`; const body = document.createElement('span'); body.textContent = ` typed · about ${formatTime(r.seconds)} if spoken`; li.append(head, body); if (r.tips.length) { const tip = document.createElement('em'); tip.textContent = r.tips.join(' '); li.append(tip); } $('delivery-list').append(li); continue; }
       const head = document.createElement('strong'); head.textContent = `Q${r.n}`;
       const fill = Object.entries(r.fillers).map(([k, v]) => `${k} ×${v}`).join(', ');
       const body = document.createElement('span'); body.textContent = ` ${formatTime(r.seconds)} spoken · ${r.wpm ?? '—'} words/min · ${r.fillerTotal ? `filler words: ${fill}` : 'no filler words detected'}`;
@@ -255,7 +270,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
   }
   function deliveryText() {
     const rows = deliveryRows(); if (!rows.length) return '';
-    return ['Speaking stats (approximate, spoken answers only)', ...rows.map(r => `Q${r.n}: ${formatTime(r.seconds)} · ${r.wpm ?? '—'} words/min · filler words: ${r.fillerTotal ? Object.entries(r.fillers).map(([k, v]) => `${k} ×${v}`).join(', ') : 'none detected'}${r.tips.length ? ' · ' + r.tips.join(' ') : ''}`)].join('\n');
+    return ['Answer length (target 1:00–1:30, under 2:00; typed answers estimated)', ...rows.map(r => r.typed ? `Q${r.n}: typed · about ${formatTime(r.seconds)} if spoken${r.tips.length ? ' · ' + r.tips.join(' ') : ''}` : `Q${r.n}: ${formatTime(r.seconds)} · ${r.wpm ?? '—'} words/min · filler words: ${r.fillerTotal ? Object.entries(r.fillers).map(([k, v]) => `${k} ×${v}`).join(', ') : 'none detected'}${r.tips.length ? ' · ' + r.tips.join(' ') : ''}`)].join('\n');
   }
   // ---------- Remember details on this device (opt-in; browser storage only, never sent to a server) ----------
   function save() {
@@ -284,6 +299,42 @@ import {analyze, notes, formatTime} from './delivery.mjs';
   }
   $('remember').addEventListener('change', () => { save(); renderSaved(); });
   $('forget').addEventListener('click', () => { try { localStorage.removeItem(STORE); } catch {} $('remember').checked = false; asked = []; lastSession = null; for (const id of ['role','job','resume']) $(id).value = ''; renderSaved(); $('status').textContent = 'Saved details removed from this device.'; });
+  // ---------- Bring in the job posting and resume ----------
+  function setStatus(id, text, ok) { const el = $(id); el.textContent = text; el.className = `small import-status ${text ? (ok ? 'ok' : 'bad') : ''}`; }
+  function scrubContact(text) {
+    // Contact details aren't needed for practice; keep them out of what is sent to the AI.
+    let removed = false;
+    const out = text.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, () => { removed = true; return '[email removed]'; })
+      .replace(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, () => { removed = true; return '[phone removed]'; });
+    return {text: out, removed};
+  }
+  async function importFile(input, box, statusId, what) {
+    const file = input.files && input.files[0]; input.value = ''; if (!file) return;
+    setStatus(statusId, `Reading ${file.name}…`, true);
+    try {
+      let text = await readFileText(file); let note = '';
+      if (what === 'resume') { const s = scrubContact(text); text = s.text; if (s.removed) note = ' Your email and phone number were left out.'; }
+      if (text.length > 16000) { text = text.slice(0, 16000); note += ' It was long, so only the first part was kept.'; }
+      $(box).value = text; save();
+      setStatus(statusId, `✓ Added your ${what} from ${file.name}. Check the text below.${note}`, true);
+    } catch (e) { setStatus(statusId, e.message && !/^load$/.test(e.message) ? e.message : 'That file couldn’t be read. Please paste the text instead.', false); }
+  }
+  $('resume-file').addEventListener('change', e => importFile(e.target, 'resume', 'resume-status', 'resume'));
+  $('job-file').addEventListener('change', e => importFile(e.target, 'job', 'job-status', 'job posting'));
+  async function importLink() {
+    const url = $('job-url').value.trim(); if (!url) return setStatus('job-status', 'Paste the link to the job posting first.', false);
+    $('job-url-go').disabled = true; setStatus('job-status', 'Getting the posting…', true);
+    try {
+      const r = await fetch('/.netlify/functions/posting', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url})});
+      let data; try { data = await r.json(); } catch { throw new Error('We couldn’t read that page. Please copy and paste the posting instead.'); }
+      if (!r.ok) throw new Error(data.error || 'We couldn’t read that page. Please copy and paste the posting instead.');
+      $('job').value = data.text; if (!$('role').value.trim() && data.title) $('role').value = data.title.slice(0, 120); save();
+      setStatus('job-status', `✓ Added the posting${data.title ? ': ' + data.title : ''}${data.company ? ' at ' + data.company : ''}. Check the text below and delete anything that isn’t part of the job.`, true);
+    } catch (e) { setStatus('job-status', e.message, false); }
+    finally { $('job-url-go').disabled = false; }
+  }
+  $('job-url-go').addEventListener('click', importLink);
+  $('job-url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); importLink(); } });
   load(); renderSaved();
   voiceButtons();
   window.addEventListener('beforeunload', e => { if (messages.length && stage === 'interview') { e.preventDefault(); e.returnValue = ''; } });
