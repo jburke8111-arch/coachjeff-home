@@ -5,7 +5,7 @@ import {readFileText} from './importers.mjs';
 (() => {
   const $ = id => document.getElementById(id);
   let messages = [], details = {}, demo = false, busy = false, report = '', stage = 'setup';
-  // Voice state: takes = recordings for the answer in progress; delivery[i] = stats for answer i (null if typed).
+  // Voice state: takes = recordings for the answer in progress; delivery[i] = length/delivery stats for answer i.
   let takes = [], delivery = [], recorder = null, recordStart = 0, recordTimer = null, transcribing = false;
   const audioCache = new Map(); const player = new Audio();
   // Practice-again state: previous = attempt being built on; redoQuestions = fixed questions for a redo;
@@ -193,7 +193,7 @@ import {readFileText} from './importers.mjs';
       await player.play();
     } catch (e) {
       // Browsers can block automatic playback; the Play button always works after a tap.
-      $('voice-status').textContent = e.name === 'NotAllowedError' ? 'Tap ▶ Play to hear the question.' : (automatic ? e.message + ' You can read the question above.' : e.message);
+      $('voice-status').textContent = e.name === 'NotAllowedError' ? 'Tap ▶ Listen to hear the question.' : (automatic ? e.message + ' You can read the question above.' : e.message);
     }
   }
   // ---------- Voice: record and transcribe answers ----------

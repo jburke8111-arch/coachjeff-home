@@ -20,7 +20,7 @@ API use needs an API project with billing/credits. A ChatGPT subscription does n
 
 ## Privacy
 
-Interview state is held in browser memory. It clears on reload; the tool warns before leaving an active session. Job description, optional background, and transcript are sent to the API in AI mode. `store:false` is used, but provider data retention rules and account settings still apply. This application does not persist or log interview contents. Provider and hosting infrastructure have their own logging and data policies. Transcript downloads happen only when the visitor clicks Download.
+Interview state is held in browser memory. It clears on reload; the tool warns before leaving an active session. Job posting, optional resume, and transcript are sent to the API in AI mode; voice recordings and question text are sent for transcription and read-aloud. Uploaded files are read in the browser and not sent; only the extracted text is used. With "Remember" checked, setup and the last session are kept in the browser's localStorage. `store:false` is used, but provider data retention rules and account settings still apply. This application does not persist or log interview contents. Provider and hosting infrastructure have their own logging and data policies. Transcript downloads happen only when the visitor clicks Download.
 
 ## Voice
 
@@ -37,11 +37,21 @@ Speaking stats (time, words per minute, filler words) are calculated in the brow
 
 Ten-question sessions produce longer feedback. If the final review times out on 10 questions, raise the function timeout in Netlify or lower `max_output_tokens`.
 
+## Job posting and resume
+
+- Job posting: paste it, upload it (PDF, .docx, text), or use a link. `netlify/functions/posting.mjs` reads public pages only (private/internal addresses refused, redirects re-checked, 2 MB / 8 s limits, 10 requests per minute per IP). Greenhouse, Lever and Workday links are read from those systems' public posting feeds; other pages use schema.org JobPosting data when present, otherwise the page text. LinkedIn, Indeed, Glassdoor, Handshake and ZipRecruiter block automated reading, so students are told to paste.
+- Resume: paste or upload (PDF, .docx, text). Uploads are read in the browser with bundled pdf.js and mammoth (`interview/vendor/`, licenses included); files are never uploaded. Email addresses and phone numbers are removed from uploaded resumes.
+- There is no job title field. The title comes from the imported posting or the first short line of the posting text and is only used as a heading and in the download.
+
+## Answer timing
+
+Coach Jeff's target is 60–90 seconds per answer, under 2 minutes. A live timer shows green 1:00–1:30, amber to 2:00, red past 2:00; recording stops at 3:00. Typed answers are estimated at about 140 words per minute. The review page and download list each answer's length.
+
 ## Practice again, question style, remembered details
 
 - Question style: Most likely (default), Likely + a curveball or two, or Curveball challenge.
 - Review page: "Redo these same questions" reuses the exact questions (no AI calls until the final review, which adds a Compared with last time section). "New questions on my weak spots" sends the previous feedback so new questions target it, and the review adds Progress on weak spots.
-- "Remember my details and past questions on this device" is opt-in and off by default. It saves the setup, the last 40 questions asked and the last session in the browser's localStorage only, so students can come back later and new sessions avoid repeat questions. "Forget saved details" clears it.
+- "Remember my details and past questions on this device" is opt-in and off by default. It saves the setup, the last 40 questions asked and the last session (questions, answers, feedback) in the browser's localStorage only, so students can come back later and new sessions avoid repeat questions. "Forget saved details" clears it.
 
 ## Validation
 
