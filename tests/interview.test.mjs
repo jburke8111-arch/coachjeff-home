@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import interview, {config} from '../netlify/functions/interview.mjs';
+import interview, {config, numbered} from '../netlify/functions/interview.mjs';
 const valid = {role:'Data analyst',job:'Analyze survey data and present findings.',resume:'Led a class analysis project.',kind:'Behavioral',length:5,messages:[],finish:false};
 function req(body, origin='https://coachjeff.netlify.app', method='POST') {
   return new Request('https://coachjeff.netlify.app/.netlify/functions/interview', {method,headers:{origin,'Content-Type':'application/json'}, ...(method==='POST' ? {body:JSON.stringify(body)} : {})});
@@ -56,4 +56,8 @@ test('question style, repeat avoidance and practice-again modes reach the prompt
     assert.equal((await interview(req({...base,messages:done,finish:true,previous:{mode:'redo',feedback:'old feedback',answers:['old']}}))).status,200);
     assert.match(seen.instructions,/Compared with last time/);
   }finally{globalThis.fetch=oldFetch;for(const [k,v] of [['OPENAI_API_KEY',oldKey],['INTERVIEW_ENABLED',oldEnabled]])if(v===undefined)delete process.env[k];else process.env[k]=v;}
+});
+
+test('final review transcript is labeled so feedback matches each question', () => {
+  assert.deepEqual(numbered([{role:'assistant',content:'Why us?'},{role:'user',content:'Mission.'},{role:'assistant',content:'A time you led?'},{role:'user',content:'Club.'}]).map(m=>m.content), ['Q1: Why us?','Answer to Q1: Mission.','Q2: A time you led?','Answer to Q2: Club.']);
 });
