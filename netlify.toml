@@ -15,4 +15,4 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "microphone=(self), camera=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob:; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://gc.zgo.at; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://coachjeff-interview.goatcounter.com; worker-src 'self' blob:; media-src 'self' blob:; img-src 'self' data: https://coachjeff-interview.goatcounter.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"

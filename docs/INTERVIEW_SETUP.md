@@ -56,3 +56,7 @@ Coach Jeff's target is 60–90 seconds per answer, under 2 minutes. A live timer
 ## Validation
 
 Run `node --test tests/*.test.mjs` and `node scripts/build-static.mjs`. Tests mock API calls, including provider failures; they do not prove live AI quality, Netlify routing or deployed rate limiting. Check those on the Netlify deployment before release.
+
+## Usage counts (GoatCounter)
+
+`interview/analytics.mjs` loads GoatCounter (site code `coachjeff-interview`) only on coachjeff.netlify.app, so deploy previews and local testing aren't counted. It counts page visits plus these events (names only, never student text): interview-started-{N}q-{style}, interview-redo-started, interview-weak-spots-started, interview-finished, sample-started, sample-finished, voice-answer, resume-uploaded, posting-uploaded, posting-link-imported, posting-link-failed, session-downloaded. The CSP for /interview/* allows https://gc.zgo.at (script) and https://coachjeff-interview.goatcounter.com (count requests).

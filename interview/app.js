@@ -1,6 +1,7 @@
 import {rounds, categories, emphasis, suggested, plan} from './focus.mjs';
 import {analyze, notes, formatTime, countWords, estimateSeconds, lengthZone} from './delivery.mjs';
 import {readFileText} from './importers.mjs';
+import {track} from './analytics.mjs';
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
@@ -124,11 +125,12 @@ import {readFileText} from './importers.mjs';
     try {
       const text = redoQuestions ? redoQuestions[0] : await ask([], false);
       demo = false; report = ''; delivery = []; takes = []; messages = [{role:'assistant', content:text}]; $('answer').value = ''; renderTranscript(); show('interview'); speakLatest();
+      track(previous?.mode === 'redo' ? 'interview-redo-started' : previous?.mode === 'focus' ? 'interview-weak-spots-started' : `interview-started-${details.length}q-${details.style}`);
     }
     catch (e) { error(e.name === 'AbortError' ? 'The connection timed out. Please try again.' : e.message); }
     finally { working(false); }
   }
-  function startSample() { demo = true; report = ''; delivery = []; takes = []; messages = [{role:'assistant', content:sampleQuestion(0)}]; $('answer').value = ''; error(); renderTranscript(); show('interview'); speakLatest(); }
+  function startSample() { track('sample-started'); demo = true; report = ''; delivery = []; takes = []; messages = [{role:'assistant', content:sampleQuestion(0)}]; $('answer').value = ''; error(); renderTranscript(); show('interview'); speakLatest(); }
   // Practice again, building on a finished session (this visit, or saved on this device).
   function redo(session) {
     if (busy || !session) return; error(); details = {...session.details};
@@ -156,6 +158,7 @@ import {readFileText} from './importers.mjs';
       else if (redoQuestions && !finish) { messages = history; messages.push({role:'assistant', content:redoQuestions[answered()]}); }
       else { const text = await ask(history, finish); messages = history; if (finish) report = text; else messages.push({role:'assistant', content:text}); }
       delivery[answered() - 1] = takes.length ? analyze(takes) : {typed:true, words:countWords(answer), seconds:estimateSeconds(answer)}; takes = [];
+      if (finish) track(demo ? 'sample-finished' : 'interview-finished');
       $('answer').value = ''; renderTranscript(); if (finish) review(); else speakLatest();
     } catch (e) { error((e.name === 'AbortError' ? 'The connection timed out.' : e.message) + ' Your answer has been kept so you can try again.'); }
     finally { working(false); }
@@ -165,7 +168,7 @@ import {readFileText} from './importers.mjs';
     const url = URL.createObjectURL(new Blob([text], {type:'text/plain;charset=utf-8'}));
     const a = document.createElement('a'); a.href = url; a.download = 'coach-jeff-interview-practice.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  document.querySelectorAll('[data-download]').forEach(el => el.addEventListener('click', download));
+  document.querySelectorAll('[data-download]').forEach(el => el.addEventListener('click', () => { download(); track('session-downloaded'); }));
   document.querySelectorAll('[data-reset]').forEach(el => el.addEventListener('click', () => {
     if (busy || !confirm('Start a new interview? Download your current session first if you want to keep it.')) return;
     stopAudio(); previous = null; redoQuestions = null; renderSaved(); messages = []; report = ''; demo = false; delivery = []; takes = []; $('answer').value = ''; document.querySelectorAll('.check input').forEach(el => el.checked = false); error(); show('setup');
@@ -235,7 +238,7 @@ import {readFileText} from './importers.mjs';
       const response = await fetch('/.netlify/functions/voice?action=transcribe', {method:'POST', headers:{'Content-Type':blob.type}, body:blob});
       let result; try { result = await response.json(); } catch { throw new Error('The voice service is unavailable. Please type your answer.'); }
       if (!response.ok || typeof result.text !== 'string') throw new Error((result.error || 'Transcription failed. Please try again or type your answer.') + (result.code ? ` (code: ${result.code})` : ''));
-      takes.push({text:result.text, seconds});
+      takes.push({text:result.text, seconds}); track('voice-answer');
       const box = $('answer'); box.value = (box.value.trim() ? box.value.trim() + ' ' : '') + result.text; box.focus();
       $('voice-status').textContent = 'Check the text, fix any mistakes, then send your answer.';
     } catch (e) { error(e.message); $('voice-status').textContent = ''; }
@@ -322,6 +325,7 @@ import {readFileText} from './importers.mjs';
       if (what === 'resume') { const s = scrubContact(text); text = s.text; if (s.removed) note = ' Your email and phone number were left out.'; }
       if (text.length > 16000) { text = text.slice(0, 16000); note += ' It was long, so only the first part was kept.'; }
       $(box).value = text; if (box === 'job') $('role').value = ''; save();
+      track(what === 'resume' ? 'resume-uploaded' : 'posting-uploaded');
       setStatus(statusId, `✓ Added your ${what} from ${file.name}. Check the text below.${note}`, true);
     } catch (e) { setStatus(statusId, e.message && !/^load$/.test(e.message) ? e.message : 'That file couldn’t be read. Please paste the text instead.', false); }
   }
@@ -334,9 +338,9 @@ import {readFileText} from './importers.mjs';
       const r = await fetch('/.netlify/functions/posting', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url})});
       let data; try { data = await r.json(); } catch { throw new Error('We couldn’t read that page. Please copy and paste the posting instead.'); }
       if (!r.ok) throw new Error(data.error || 'We couldn’t read that page. Please copy and paste the posting instead.');
-      $('job').value = data.text; $('role').value = (data.title || '').slice(0, 120); save();
+      $('job').value = data.text; $('role').value = (data.title || '').slice(0, 120); save(); track('posting-link-imported');
       setStatus('job-status', `✓ Added the posting${data.title ? ': ' + data.title : ''}${data.company ? ' at ' + data.company : ''}. Check the text below and delete anything that isn’t part of the job.`, true);
-    } catch (e) { setStatus('job-status', e.message, false); }
+    } catch (e) { setStatus('job-status', e.message, false); track('posting-link-failed'); }
     finally { $('job-url-go').disabled = false; }
   }
   $('job-url-go').addEventListener('click', importLink);
