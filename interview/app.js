@@ -39,8 +39,14 @@ import {readFileText} from './importers.mjs';
     const n = Number($('length').value); const topics = plan($('round').value,ids,n);
     $('focus-summary').textContent = !ids.length ? 'Select at least one category.' : `${ids.length} categories selected · ${n} questions. ${ids.length > n ? 'This session will prioritize the strongest suggested topics; use fewer categories to target a particular topic. ' : ''}Planned topics: ${[...new Set(topics.map(c=>c.label))].join(', ')}.`;
   }
+  // The job title comes from the posting: the link's title when imported, otherwise the posting's first short line.
+  function guessTitle(job) {
+    const skip = /^(about (the|this) (job|role)|job (description|summary|details)|overview|description|responsibilities|apply|share)\b/i;
+    const line = String(job).split('\n').map(l => l.replace(/^[•\-*#\s]+/, '').trim()).find(l => l.length >= 3 && l.length <= 80 && !skip.test(l) && !/[.:]$/.test(l));
+    return (line || 'Practice interview').slice(0, 120);
+  }
   function readDetails() {
-    return {role:$('role').value.trim(), job:$('job').value.trim(), resume:$('resume').value.trim(), kind:'General screening', style:$('style').value, round:$('round').value, focusIds:[...document.querySelectorAll('[name=focus]:checked')].map(el=>el.value), length:Number($('length').value)};
+    return {role:$('role').value.trim() || guessTitle($('job').value), job:$('job').value.trim(), resume:$('resume').value.trim(), kind:'General screening', style:$('style').value, round:$('round').value, focusIds:[...document.querySelectorAll('[name=focus]:checked')].map(el=>el.value), length:Number($('length').value)};
   }
   $('round').addEventListener('change',()=>renderFocus(true)); $('length').addEventListener('change',focusSummary); $('reset-focus').addEventListener('click',()=>renderFocus(true)); renderFocus(true);
   function error(message = '') { $('error').textContent = message; $('error').classList.toggle('hidden', !message); }
@@ -109,7 +115,7 @@ import {readFileText} from './importers.mjs';
     e.preventDefault(); if (busy) return; error();
     details = readDetails();
     if (!details.focusIds.length) return error('Select at least one question category.');
-    if (!details.role || !details.job) return error('Enter a job title and job description.');
+    if (!details.job) return error('Add the job posting: paste it, upload it, or use a link.');
     previous = null; redoQuestions = null; save();
     await startAI();
   });
@@ -315,7 +321,7 @@ import {readFileText} from './importers.mjs';
       let text = await readFileText(file); let note = '';
       if (what === 'resume') { const s = scrubContact(text); text = s.text; if (s.removed) note = ' Your email and phone number were left out.'; }
       if (text.length > 16000) { text = text.slice(0, 16000); note += ' It was long, so only the first part was kept.'; }
-      $(box).value = text; save();
+      $(box).value = text; if (box === 'job') $('role').value = ''; save();
       setStatus(statusId, `✓ Added your ${what} from ${file.name}. Check the text below.${note}`, true);
     } catch (e) { setStatus(statusId, e.message && !/^load$/.test(e.message) ? e.message : 'That file couldn’t be read. Please paste the text instead.', false); }
   }
@@ -328,12 +334,14 @@ import {readFileText} from './importers.mjs';
       const r = await fetch('/.netlify/functions/posting', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url})});
       let data; try { data = await r.json(); } catch { throw new Error('We couldn’t read that page. Please copy and paste the posting instead.'); }
       if (!r.ok) throw new Error(data.error || 'We couldn’t read that page. Please copy and paste the posting instead.');
-      $('job').value = data.text; if (!$('role').value.trim() && data.title) $('role').value = data.title.slice(0, 120); save();
+      $('job').value = data.text; $('role').value = (data.title || '').slice(0, 120); save();
       setStatus('job-status', `✓ Added the posting${data.title ? ': ' + data.title : ''}${data.company ? ' at ' + data.company : ''}. Check the text below and delete anything that isn’t part of the job.`, true);
     } catch (e) { setStatus('job-status', e.message, false); }
     finally { $('job-url-go').disabled = false; }
   }
   $('job-url-go').addEventListener('click', importLink);
+  // If the student edits or replaces the posting text, stop using an imported title.
+  $('job').addEventListener('input', () => { $('role').value = ''; });
   $('job-url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); importLink(); } });
   load(); renderSaved();
   voiceButtons();
