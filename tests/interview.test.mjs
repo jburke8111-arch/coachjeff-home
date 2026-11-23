@@ -26,7 +26,7 @@ test('anonymous interview validation and provider handling', async t => {
     });
     await t.test('final feedback request uses bounded output and actual transcript',async()=>{
       const messages=Array.from({length:10},(_,i)=>({role:i%2?'user':'assistant',content:i%2?'I checked survey results.':'What did you do?'}));
-      globalThis.fetch=async(url,options)=>{const payload=JSON.parse(options.body);assert.equal(payload.max_output_tokens,2200);assert.match(payload.instructions,/Answer-by-answer/);assert.match(payload.instructions,/Do not skip any answer/);assert.match(payload.instructions,/interview is complete/);assert.match(payload.instructions,/evaluate STAR\+ separately/);for(const element of ['Situation (context)','Task (responsibility)','Action (what the candidate personally did)','Result (outcome or lesson)','connection to a specific skill or requirement in the supplied job posting'])assert.ok(payload.instructions.includes(element));assert.match(payload.instructions,/distinguish a potential connection you inferred from one they stated/);assert.match(payload.instructions,/Do not penalize those answers for lacking STAR\+/);assert.match(payload.instructions,/If no behavioral answers were practiced/);assert.equal(payload.input.length,11);return Response.json({output:[{content:[{type:'output_text',text:'Strengths: You explained your actions.'}]}]});};
+      globalThis.fetch=async(url,options)=>{const payload=JSON.parse(options.body);assert.equal(payload.max_output_tokens,2200);assert.match(payload.instructions,/Answer-by-answer/);assert.match(payload.instructions,/Do not skip any answer/);assert.match(payload.instructions,/interview is complete/);assert.match(payload.instructions,/evaluate STAR\+ separately/);for(const element of ['Situation (context)','Task (responsibility)','Action (what the candidate personally did)','Result (outcome or lesson)','connection to a specific skill or requirement in the supplied job posting'])assert.ok(payload.instructions.includes(element));assert.match(payload.instructions,/distinguish a potential connection you inferred from one they stated/);assert.match(payload.instructions,/Do not penalize those answers for lacking STAR\+/);assert.match(payload.instructions,/If no behavioral answers were practiced/);assert.equal(payload.input.length,2);assert.match(payload.input[1].content,/^Completed interview transcript/);assert.match(payload.input[1].content,/Answer to Q5: I checked survey results\./);assert.match(payload.input[1].content,/Do not ask another question\.$/);return Response.json({output:[{content:[{type:'output_text',text:'Answer-by-answer\nQ1 ...\nStrengths: You explained your actions.'}]}]});};
       assert.equal((await interview(req({...valid,messages,finish:true}))).status,200);
     });
     await t.test('provider error, incomplete response and timeout are recoverable',async()=>{
@@ -45,7 +45,7 @@ test('question style, repeat avoidance and practice-again modes reach the prompt
   const req=d=>new Request('https://x.netlify.app/.netlify/functions/interview',{method:'POST',headers:{Origin:'https://x.netlify.app','Content-Type':'application/json'},body:JSON.stringify(d)});
   try{
     process.env.INTERVIEW_ENABLED='true';process.env.OPENAI_API_KEY='test-only';let seen;
-    globalThis.fetch=async(url,o)=>{seen=JSON.parse(o.body);return Response.json({output:[{content:[{type:'output_text',text:'Q'}]}]});};
+    globalThis.fetch=async(url,o)=>{seen=JSON.parse(o.body);return Response.json({output:[{content:[{type:'output_text',text:'Answer-by-answer\nQ1 ok\nStrengths: ok'}]}]});};
     for(const bad of [{style:'tricky'},{avoid:'x'},{avoid:Array(41).fill('q')},{previous:{mode:'other',feedback:'f',answers:[]}},{previous:{mode:'redo',feedback:'',answers:[]}}])assert.equal((await interview(req({...base,...bad}))).status,400);
     assert.equal((await interview(req(base))).status,200);assert.match(seen.instructions,/most likely questions/);
     assert.equal((await interview(req({...base,style:'curveball',avoid:['Tell me about yourself.']}))).status,200);
@@ -61,4 +61,18 @@ test('question style, repeat avoidance and practice-again modes reach the prompt
 
 test('final review transcript is labeled so feedback matches each question', () => {
   assert.deepEqual(numbered([{role:'assistant',content:'Why us?'},{role:'user',content:'Mission.'},{role:'assistant',content:'A time you led?'},{role:'user',content:'Club.'}]).map(m=>m.content), ['Q1: Why us?','Answer to Q1: Mission.','Q2: A time you led?','Answer to Q2: Club.']);
+});
+
+test('final review retries once if the AI returns a question instead of a report', async () => {
+  const oldFetch=globalThis.fetch,oldKey=process.env.OPENAI_API_KEY,oldEnabled=process.env.INTERVIEW_ENABLED;
+  const done=Array.from({length:10},(_,i)=>({role:i%2?'user':'assistant',content:i%2?'answer':'question'}));
+  const body={role:'Analyst',job:'Analyze data',resume:'',kind:'General screening',length:5,messages:done,finish:true,round:'recruiter',focusIds:['behavioral']};
+  const req=()=>new Request('https://x.netlify.app/.netlify/functions/interview',{method:'POST',headers:{Origin:'https://x.netlify.app','Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{
+    process.env.INTERVIEW_ENABLED='true';process.env.OPENAI_API_KEY='test-only';let calls=0;
+    globalThis.fetch=async()=>{calls++;return Response.json({output:[{content:[{type:'output_text',text:calls===1?'Q6: Tell me more?':'Answer-by-answer\nQ1 good\nStrengths: clear'}]}]});};
+    const r=await interview(req());assert.equal(r.status,200);assert.equal(calls,2);assert.match((await r.json()).text,/Strengths/);
+    calls=0;globalThis.fetch=async()=>{calls++;return Response.json({output:[{content:[{type:'output_text',text:'Q6: Another?'}]}]});};
+    assert.equal((await interview(req())).status,502);assert.equal(calls,2);
+  }finally{globalThis.fetch=oldFetch;for(const [k,v] of [['OPENAI_API_KEY',oldKey],['INTERVIEW_ENABLED',oldEnabled]])if(v===undefined)delete process.env[k];else process.env[k]=v;}
 });
