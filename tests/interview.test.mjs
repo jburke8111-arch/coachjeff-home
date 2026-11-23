@@ -54,7 +54,8 @@ test('question style, repeat avoidance and practice-again modes reach the prompt
     assert.match(seen.instructions,/aim this question at one of those weak spots/);assert.equal(JSON.parse(seen.input[0].content).previousAttempt.feedback,'Improvements: add results.');
     const done=Array.from({length:10},(_,i)=>({role:i%2?'user':'assistant',content:i%2?'answer':'question'}));
     assert.equal((await interview(req({...base,messages:done,finish:true,previous:{mode:'redo',feedback:'old feedback',answers:['old']}}))).status,200);
-    assert.match(seen.instructions,/Compared with last time/);
+    assert.match(seen.instructions,/Next, a heading Compared with last time/);assert.doesNotMatch(seen.instructions,/\$\{compareSection\}/);
+    assert.equal((await interview(req({...base,messages:done,finish:true,previous:{mode:'focus',feedback:'old feedback',answers:['old']}}))).status,200);assert.match(seen.instructions,/Next, a heading Progress on weak spots/);
   }finally{globalThis.fetch=oldFetch;for(const [k,v] of [['OPENAI_API_KEY',oldKey],['INTERVIEW_ENABLED',oldEnabled]])if(v===undefined)delete process.env[k];else process.env[k]=v;}
 });
 
