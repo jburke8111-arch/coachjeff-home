@@ -4,7 +4,7 @@ import {rounds,categories,suggested,plan,emphasis} from '../interview/focus.mjs'
 import interview from '../netlify/functions/interview.mjs';
 test('all six rounds have a valid suggested mix matching the supplied weights',()=>{
   assert.equal(rounds.length,6);assert.equal(categories.length,10);
-  for(const round of rounds){const ids=suggested(round.id);assert.ok(ids.length);assert.ok(ids.every(id=>emphasis(categories.find(c=>c.id===id),round.id)>0));for(const length of [5,8]){const schedule=plan(round.id,ids,length);assert.equal(schedule.length,length);assert.ok(schedule.every(c=>ids.includes(c.id)));}}
+  for(const round of rounds){const ids=suggested(round.id);assert.ok(ids.length);assert.ok(ids.every(id=>emphasis(categories.find(c=>c.id===id),round.id)>0));for(const length of [5,8,10]){const schedule=plan(round.id,ids,length);assert.equal(schedule.length,length);assert.ok(schedule.every(c=>ids.includes(c.id)));}}
   assert.deepEqual(categories.find(c=>c.id==='behavioral').weights,[2,1,3,1,3,2]);
 });
 test('custom focus is honored, including categories outside the usual mix',()=>{

@@ -14,3 +14,13 @@
 .star-steps dd{margin:3px 0 0}
 .star-steps .star-plus{border-left:4px solid #52713e;background:#e8eee2}
 @media(max-width:600px){.star-guide,.star-reminder{padding:14px;font-size:14px}.star-steps div{padding:9px 10px}}
+
+.voice-toggle{margin:18px 0 0;font-size:13px}
+.message .play{display:inline-block;margin-top:10px;font-size:12px;color:#284f37;border:1px solid #cddcc3;border-radius:20px;padding:5px 12px;background:#fff}
+.message .play:hover{background:#e8eee2}
+.voice-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 6px}
+#record{font-size:13px;padding:12px 16px}
+#record.recording{background:#fff1e9;border-color:#e3b8a3;color:#803d24;font-weight:600}
+.delivery-list{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:10px}
+.delivery-list li{background:#fff;border-radius:7px;padding:10px 12px;font-size:13px;line-height:1.6}
+.delivery-list em{display:block;font-style:normal;color:#803d24;font-size:12px;margin-top:3px}

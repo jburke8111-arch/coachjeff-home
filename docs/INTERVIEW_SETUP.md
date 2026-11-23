@@ -22,10 +22,21 @@ API use needs an API project with billing/credits. A ChatGPT subscription does n
 
 Interview state is held in browser memory. It clears on reload; the tool warns before leaving an active session. Job description, optional background, and transcript are sent to the API in AI mode. `store:false` is used, but provider data retention rules and account settings still apply. This application does not persist or log interview contents. Provider and hosting infrastructure have their own logging and data policies. Transcript downloads happen only when the visitor clicks Download.
 
-## Audio later
+## Voice
 
-The UI and API exchange role/content text turns. Audio can be added as optional transcription into the answer field and playback of interviewer messages while retaining typed practice. This release does not request microphone access. Update the microphone Permissions-Policy when audio is implemented.
+Voice is optional; typing always works. `netlify/functions/voice.mjs` does two things:
+
+- `?action=speak` reads an interviewer question aloud with OpenAI text-to-speech (default `gpt-4o-mini-tts`, voice `coral`). The browser caches each question's audio so replays are free.
+- `?action=transcribe` turns a spoken answer (max 3 minutes) into text with OpenAI transcription (default `whisper-1`, prompted to keep "um"/"uh" so filler words can be counted). The text goes into the answer box for the student to check and edit before sending.
+
+It uses the same `OPENAI_API_KEY` and `INTERVIEW_ENABLED` settings. Optional settings: `VOICE_ENABLED=false` turns voice off while keeping typed interviews; `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `OPENAI_TRANSCRIBE_MODEL` override the defaults. Rate limit: 40 voice requests per minute per visitor IP. Recordings are not stored.
+
+Speaking stats (time, words per minute, filler words) are calculated in the browser from the transcript and shown on the review page and in the download. The time and pace guides are practice rules of thumb.
+
+`netlify.toml` allows the microphone on `/interview/` (`microphone=(self)`) and `media-src 'self' blob:` for audio playback.
+
+Ten-question sessions produce longer feedback. If the final review times out on 10 questions, raise the function timeout in Netlify or lower `max_output_tokens`.
 
 ## Validation
 
-Run `node --test tests/interview.test.mjs` and `node scripts/build-static.mjs`. Tests mock API calls, including provider failures; they do not prove live AI quality, Netlify routing or deployed rate limiting. Check those on the Netlify deployment before release.
+Run `node --test tests/*.test.mjs` and `node scripts/build-static.mjs`. Tests mock API calls, including provider failures; they do not prove live AI quality, Netlify routing or deployed rate limiting. Check those on the Netlify deployment before release.
