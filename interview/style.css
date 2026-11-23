@@ -24,3 +24,15 @@
 .delivery-list{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:10px}
 .delivery-list li{background:#fff;border-radius:7px;padding:10px 12px;font-size:13px;line-height:1.6}
 .delivery-list em{display:block;font-style:normal;color:#803d24;font-size:12px;margin-top:3px}
+
+.three{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:14px}
+@media(max-width:800px){.three{grid-template-columns:1fr 1fr}.three>div:last-child{grid-column:1/-1}}
+.saved{background:#f4f7ef;border:1px solid #cddcc3;border-radius:10px;padding:16px 18px;margin:18px 0;font-size:14px;line-height:1.6}
+.saved p{margin:6px 0 0;color:#5f6e5c;font-size:13px}
+.again{border-top:1px solid #e5e9df;margin-top:24px;padding-top:6px}
+.again h3{font-size:16px}
+.again-buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.again-buttons .secondary{font-size:13px;padding:12px 14px;white-space:normal;text-align:left}
+.remember-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}
+.remember-row .check{margin:0;font-size:13px}
+.link{font-size:12px;color:#637459;text-decoration:underline}

@@ -38,3 +38,22 @@ test('anonymous interview validation and provider handling', async t => {
     await t.test('platform rate limit is declared',()=>{assert.equal(config.rateLimit.aggregateBy,'ip');assert.equal(config.rateLimit.windowLimit,12);assert.equal(config.rateLimit.windowSize,60);});
   } finally { globalThis.fetch=oldFetch;for(const [key,value] of [['OPENAI_API_KEY',oldKey],['INTERVIEW_ENABLED',oldEnabled]])if(value===undefined)delete process.env[key];else process.env[key]=value; }
 });
+
+test('question style, repeat avoidance and practice-again modes reach the prompt', async () => {
+  const oldFetch=globalThis.fetch,oldKey=process.env.OPENAI_API_KEY,oldEnabled=process.env.INTERVIEW_ENABLED;
+  const base={role:'Analyst',job:'Analyze data',resume:'',kind:'General screening',length:5,messages:[],finish:false,round:'recruiter',focusIds:['behavioral']};
+  const req=d=>new Request('https://x.netlify.app/.netlify/functions/interview',{method:'POST',headers:{Origin:'https://x.netlify.app','Content-Type':'application/json'},body:JSON.stringify(d)});
+  try{
+    process.env.INTERVIEW_ENABLED='true';process.env.OPENAI_API_KEY='test-only';let seen;
+    globalThis.fetch=async(url,o)=>{seen=JSON.parse(o.body);return Response.json({output:[{content:[{type:'output_text',text:'Q'}]}]});};
+    for(const bad of [{style:'tricky'},{avoid:'x'},{avoid:Array(41).fill('q')},{previous:{mode:'other',feedback:'f',answers:[]}},{previous:{mode:'redo',feedback:'',answers:[]}}])assert.equal((await interview(req({...base,...bad}))).status,400);
+    assert.equal((await interview(req(base))).status,200);assert.match(seen.instructions,/most likely questions/);
+    assert.equal((await interview(req({...base,style:'curveball',avoid:['Tell me about yourself.']}))).status,200);
+    assert.match(seen.instructions,/curveball challenge/);assert.match(seen.instructions,/do not repeat or closely paraphrase/);assert.deepEqual(JSON.parse(seen.input[0].content).previouslyAsked,['Tell me about yourself.']);
+    assert.equal((await interview(req({...base,previous:{mode:'focus',feedback:'Improvements: add results.',answers:['a']}}))).status,200);
+    assert.match(seen.instructions,/aim this question at one of those weak spots/);assert.equal(JSON.parse(seen.input[0].content).previousAttempt.feedback,'Improvements: add results.');
+    const done=Array.from({length:10},(_,i)=>({role:i%2?'user':'assistant',content:i%2?'answer':'question'}));
+    assert.equal((await interview(req({...base,messages:done,finish:true,previous:{mode:'redo',feedback:'old feedback',answers:['old']}}))).status,200);
+    assert.match(seen.instructions,/Compared with last time/);
+  }finally{globalThis.fetch=oldFetch;for(const [k,v] of [['OPENAI_API_KEY',oldKey],['INTERVIEW_ENABLED',oldEnabled]])if(v===undefined)delete process.env[k];else process.env[k]=v;}
+});

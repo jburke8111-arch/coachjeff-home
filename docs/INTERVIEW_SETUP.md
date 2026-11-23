@@ -37,6 +37,12 @@ Speaking stats (time, words per minute, filler words) are calculated in the brow
 
 Ten-question sessions produce longer feedback. If the final review times out on 10 questions, raise the function timeout in Netlify or lower `max_output_tokens`.
 
+## Practice again, question style, remembered details
+
+- Question style: Most likely (default), Likely + a curveball or two, or Curveball challenge.
+- Review page: "Redo these same questions" reuses the exact questions (no AI calls until the final review, which adds a Compared with last time section). "New questions on my weak spots" sends the previous feedback so new questions target it, and the review adds Progress on weak spots.
+- "Remember my details and past questions on this device" is opt-in and off by default. It saves the setup, the last 40 questions asked and the last session in the browser's localStorage only, so students can come back later and new sessions avoid repeat questions. "Forget saved details" clears it.
+
 ## Validation
 
 Run `node --test tests/*.test.mjs` and `node scripts/build-static.mjs`. Tests mock API calls, including provider failures; they do not prove live AI quality, Netlify routing or deployed rate limiting. Check those on the Netlify deployment before release.

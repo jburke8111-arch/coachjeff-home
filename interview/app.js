@@ -7,6 +7,10 @@ import {analyze, notes, formatTime} from './delivery.mjs';
   // Voice state: takes = recordings for the answer in progress; delivery[i] = stats for answer i (null if typed).
   let takes = [], delivery = [], recorder = null, recordStart = 0, recordTimer = null, transcribing = false;
   const audioCache = new Map(); const player = new Audio();
+  // Practice-again state: previous = attempt being built on; redoQuestions = fixed questions for a redo;
+  // asked = questions already practiced (so new sessions avoid repeats); lastSession = the session just finished.
+  let previous = null, redoQuestions = null, asked = [], lastSession = null;
+  const STORE = 'coachjeff-interview-v1';
   const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
   const answered = () => messages.filter(m => m.role === 'user').length;
   const total = () => details.length;
@@ -35,7 +39,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     $('focus-summary').textContent = !ids.length ? 'Select at least one category.' : `${ids.length} categories selected · ${n} questions. ${ids.length > n ? 'This session will prioritize the strongest suggested topics; use fewer categories to target a particular topic. ' : ''}Planned topics: ${[...new Set(topics.map(c=>c.label))].join(', ')}.`;
   }
   function readDetails() {
-    return {role:$('role').value.trim(), job:$('job').value.trim(), resume:$('resume').value.trim(), kind:'General screening', round:$('round').value, focusIds:[...document.querySelectorAll('[name=focus]:checked')].map(el=>el.value), length:Number($('length').value)};
+    return {role:$('role').value.trim(), job:$('job').value.trim(), resume:$('resume').value.trim(), kind:'General screening', style:$('style').value, round:$('round').value, focusIds:[...document.querySelectorAll('[name=focus]:checked')].map(el=>el.value), length:Number($('length').value)};
   }
   $('round').addEventListener('change',()=>renderFocus(true)); $('length').addEventListener('change',focusSummary); $('reset-focus').addEventListener('click',()=>renderFocus(true)); renderFocus(true);
   function error(message = '') { $('error').textContent = message; $('error').classList.toggle('hidden', !message); }
@@ -53,7 +57,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     const heading = $(next).querySelector('h2'); heading.focus();
   }
   function renderTranscript() {
-    $('mode').textContent = demo ? 'SAMPLE MODE' : 'AI INTERVIEW';
+    $('mode').textContent = (demo ? 'SAMPLE MODE' : 'AI INTERVIEW') + (previous?.mode === 'redo' ? ' · REDO' : previous?.mode === 'focus' ? ' · WEAK SPOTS' : '');
     $('interview-title').textContent = demo ? 'Practice your next conversation.' : details.role;
     $('count').textContent = `${answered()} of ${total()} answers completed${demo ? ' · Preset questions; no adaptive feedback' : ''}`;
     $('progress').style.width = `${answered() / total() * 100}%`;
@@ -78,13 +82,17 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     $('feedback').classList.toggle('hidden', demo);
     $('ai-note').classList.toggle('hidden', demo);
     renderDelivery();
+    lastSession = {demo, details:{...details}, questions:messages.filter(m=>m.role==='assistant').map(m=>m.content), answers:messages.filter(m=>m.role==='user').map(m=>m.content), report, samplePlan:[...samplePlan]};
+    if (!demo) { for (const q of lastSession.questions) if (!asked.includes(q)) asked.push(q); asked = asked.slice(-40); }
+    $('weak').classList.toggle('hidden', demo);
+    save();
     show('review');
   }
   async function ask(history, finish) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 55000);
     try {
-      const response = await fetch('/.netlify/functions/interview', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...details, messages:history, finish}), signal:controller.signal});
+      const response = await fetch('/.netlify/functions/interview', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...details, messages:history, finish, avoid: previous?.mode === 'redo' ? [] : asked.slice(-40), ...(previous ? {previous:{mode:previous.mode, feedback:previous.feedback.slice(0,8000), answers:previous.answers.map(a=>a.slice(0,5000))}} : {})}), signal:controller.signal});
       if (response.status === 429) throw new Error('The practice limit has been reached. Please wait a few minutes and try again.');
       let result;
       try { result = await response.json(); } catch { throw new Error('The interview service is unavailable. Please try again later.'); }
@@ -98,12 +106,36 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     details = readDetails();
     if (!details.focusIds.length) return error('Select at least one question category.');
     if (!details.role || !details.job) return error('Enter a job title and job description.');
+    previous = null; redoQuestions = null; save();
+    await startAI();
+  });
+  async function startAI() {
     working(true);
-    try { const text = await ask([], false); demo = false; report = ''; delivery = []; takes = []; messages = [{role:'assistant', content:text}]; renderTranscript(); show('interview'); speakLatest(); }
+    try {
+      const text = redoQuestions ? redoQuestions[0] : await ask([], false);
+      demo = false; report = ''; delivery = []; takes = []; messages = [{role:'assistant', content:text}]; $('answer').value = ''; renderTranscript(); show('interview'); speakLatest();
+    }
     catch (e) { error(e.name === 'AbortError' ? 'The connection timed out. Please try again.' : e.message); }
     finally { working(false); }
-  });
-  $('sample').addEventListener('click', () => { if (busy) return; details = readDetails(); if (!details.focusIds.length) return error('Select at least one question category.'); demo = true; report = ''; delivery = []; takes = []; samplePlan = plan(details.round, details.focusIds, details.length); messages = [{role:'assistant', content:sampleQuestion(0)}]; $('answer').value = ''; error(); renderTranscript(); show('interview'); speakLatest(); });
+  }
+  function startSample() { demo = true; report = ''; delivery = []; takes = []; messages = [{role:'assistant', content:sampleQuestion(0)}]; $('answer').value = ''; error(); renderTranscript(); show('interview'); speakLatest(); }
+  // Practice again, building on a finished session (this visit, or saved on this device).
+  function redo(session) {
+    if (busy || !session) return; error(); details = {...session.details};
+    if (session.demo) { previous = null; redoQuestions = null; samplePlan = session.samplePlan.length ? [...session.samplePlan] : plan(details.round, details.focusIds, details.length); return startSample(); }
+    previous = {mode:'redo', feedback:session.report, answers:session.answers}; redoQuestions = [...session.questions]; details.length = redoQuestions.length;
+    startAI();
+  }
+  function weakSpots(session) {
+    if (busy || !session || session.demo) return; error(); details = {...session.details};
+    previous = {mode:'focus', feedback:session.report, answers:session.answers}; redoQuestions = null;
+    startAI();
+  }
+  $('redo').addEventListener('click', () => redo(lastSession));
+  $('weak').addEventListener('click', () => weakSpots(lastSession));
+  $('saved-redo').addEventListener('click', () => redo(lastSession));
+  $('saved-weak').addEventListener('click', () => weakSpots(lastSession));
+  $('sample').addEventListener('click', () => { if (busy) return; details = readDetails(); if (!details.focusIds.length) return error('Select at least one question category.'); previous = null; redoQuestions = null; samplePlan = plan(details.round, details.focusIds, details.length); save(); startSample(); });
   $('answer-form').addEventListener('submit', async e => {
     e.preventDefault(); const answer = $('answer').value.trim(); if (busy || transcribing || recorder || !answer || answered() >= total()) return;
     error(); working(true);
@@ -111,6 +143,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     const finish = answered() + 1 >= total();
     try {
       if (demo) { messages = history; if (!finish) messages.push({role:'assistant', content:sampleQuestion(answered())}); }
+      else if (redoQuestions && !finish) { messages = history; messages.push({role:'assistant', content:redoQuestions[answered()]}); }
       else { const text = await ask(history, finish); messages = history; if (finish) report = text; else messages.push({role:'assistant', content:text}); }
       delivery[answered() - 1] = takes.length ? analyze(takes) : null; takes = [];
       $('answer').value = ''; renderTranscript(); if (finish) review(); else speakLatest();
@@ -125,7 +158,7 @@ import {analyze, notes, formatTime} from './delivery.mjs';
   document.querySelectorAll('[data-download]').forEach(el => el.addEventListener('click', download));
   document.querySelectorAll('[data-reset]').forEach(el => el.addEventListener('click', () => {
     if (busy || !confirm('Start a new interview? Download your current session first if you want to keep it.')) return;
-    stopAudio(); messages = []; report = ''; demo = false; delivery = []; takes = []; $('answer').value = ''; document.querySelectorAll('.check input').forEach(el => el.checked = false); error(); show('setup');
+    stopAudio(); previous = null; redoQuestions = null; renderSaved(); messages = []; report = ''; demo = false; delivery = []; takes = []; $('answer').value = ''; document.querySelectorAll('.check input').forEach(el => el.checked = false); error(); show('setup');
   }));
   $('view-transcript').addEventListener('click', () => { renderTranscript(); show('interview'); });
   $('back-review').addEventListener('click', review);
@@ -221,6 +254,34 @@ import {analyze, notes, formatTime} from './delivery.mjs';
     const rows = deliveryRows(); if (!rows.length) return '';
     return ['Speaking stats (approximate, spoken answers only)', ...rows.map(r => `Q${r.n}: ${formatTime(r.seconds)} · ${r.wpm ?? '—'} words/min · filler words: ${r.fillerTotal ? Object.entries(r.fillers).map(([k, v]) => `${k} ×${v}`).join(', ') : 'none detected'}${r.tips.length ? ' · ' + r.tips.join(' ') : ''}`)].join('\n');
   }
+  // ---------- Remember details on this device (opt-in; browser storage only, never sent to a server) ----------
+  function save() {
+    try {
+      if (!$('remember').checked) { localStorage.removeItem(STORE); return; }
+      const d = readDetails();
+      localStorage.setItem(STORE, JSON.stringify({role:d.role, job:d.job, resume:d.resume, round:d.round, focusIds:d.focusIds, length:d.length, style:d.style, asked, lastSession, savedAt:Date.now()}));
+    } catch { /* storage full or blocked: the tool still works without it */ }
+  }
+  function load() {
+    let data; try { data = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch { data = null; }
+    if (!data) return;
+    $('remember').checked = true;
+    for (const id of ['role','job','resume']) if (typeof data[id] === 'string') $(id).value = data[id];
+    if (rounds.some(r => r.id === data.round)) $('round').value = data.round;
+    if ([5,8,10].includes(data.length)) $('length').value = String(data.length);
+    if (['likely','mixed','curveball'].includes(data.style)) $('style').value = data.style;
+    if (Array.isArray(data.focusIds) && data.focusIds.length) { renderFocus(true); document.querySelectorAll('[name=focus]').forEach(el => { el.checked = data.focusIds.includes(el.value); }); focusSummary(); }
+    if (Array.isArray(data.asked)) asked = data.asked.filter(q => typeof q === 'string').slice(-40);
+    if (data.lastSession && Array.isArray(data.lastSession.questions) && Array.isArray(data.lastSession.answers) && data.lastSession.details) lastSession = data.lastSession;
+  }
+  function renderSaved() {
+    const show = !!(lastSession && $('remember').checked);
+    $('saved-session').classList.toggle('hidden', !show);
+    if (show) { $('saved-weak').classList.toggle('hidden', !!lastSession.demo); $('saved-summary').textContent = `Last time: ${lastSession.demo ? 'sample practice' : lastSession.details.role} · ${lastSession.questions.length} questions.`; }
+  }
+  $('remember').addEventListener('change', () => { save(); renderSaved(); });
+  $('forget').addEventListener('click', () => { try { localStorage.removeItem(STORE); } catch {} $('remember').checked = false; asked = []; lastSession = null; for (const id of ['role','job','resume']) $(id).value = ''; renderSaved(); $('status').textContent = 'Saved details removed from this device.'; });
+  load(); renderSaved();
   voiceButtons();
   window.addEventListener('beforeunload', e => { if (messages.length && stage === 'interview') { e.preventDefault(); e.returnValue = ''; } });
 })();
